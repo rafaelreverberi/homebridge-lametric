@@ -1,8 +1,7 @@
 {
-  "pluginAlias": "ExampleHomebridgePlugin",
+  "pluginAlias": "LaMetricPlatform",
   "pluginType": "platform",
   "singular": true,
-  "strictValidation": false,
   "schema": {
     "type": "object",
     "properties": {
@@ -10,7 +9,30 @@
         "title": "Name",
         "type": "string",
         "required": true,
-        "default": "Example Dynamic Platform"
+        "default": "LaMetric"
+      },
+      "ip": {
+        "title": "LaMetric IP-Adresse",
+        "type": "string",
+        "required": true,
+        "default": "192.168.1.52"
+      },
+      "apiKey": {
+        "title": "LaMetric API Key",
+        "type": "string",
+        "required": true
+      },
+      "apps": {
+        "title": "Apps (Liste von App IDs)",
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": [
+          "com.lametric.clock",
+          "com.lametric.weather",
+          "com.lametric.radio"
+        ]
       }
     }
   }
