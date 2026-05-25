@@ -1,215 +1,167 @@
-<p align="center">
+# Homebridge LaMetric
 
-<img src="https://github.com/homebridge/branding/raw/latest/logos/homebridge-wordmark-logo-vertical.png" width="150">
+Homebridge platform plugin for integrating LaMetric Time devices into Apple HomeKit.
 
-</p>
+This plugin exposes a LaMetric Time as native HomeKit controls for display power, app selection, brightness, volume, mute, and quick actions such as showing a configured crypto app or briefly waking the display.
 
-<span align="center">
+## Features
 
-# Homebridge Platform Plugin Template
+- Exposes each LaMetric Time as multiple HomeKit accessories.
+- Switch apps from the Home app by using TV input sources.
+- Control display brightness with a HomeKit light accessory.
+- Control speaker volume and mute with a HomeKit speaker accessory.
+- Turn the display "off" by activating a configured blackout widget.
+- Turn the display "on" by activating the clock widget.
+- Optional helper switch to show a crypto widget temporarily.
+- Optional helper switch to wake the display with a short brightness ramp.
+- Supports one or more configured LaMetric devices.
 
-</span>
+## Requirements
 
-> [!IMPORTANT]
-> **Homebridge v2.0 Information**
->
-> This template currently has a
-> - `package.json -> engines.homebridge` value of `"^1.8.0 || ^2.0.0-beta.0"`
-> - `package.json -> devDependencies.homebridge` value of `"^2.0.0-beta.0"`
->
-> This is to ensure that your plugin will build and run on both Homebridge v1 and v2.
->
-> Once Homebridge v2.0 has been released, you can remove the `-beta.0` in both places.
+- Homebridge 1.8.0 or newer
+- Node.js 18, 20, or 22
+- A LaMetric Time reachable on the local network
+- A LaMetric developer API key for the device
 
----
+## Installation
 
-This is a template Homebridge dynamic platform plugin and can be used as a base to help you get started developing your own plugin.
+Install the plugin in your Homebridge environment:
 
-This template should be used in conjunction with the [developer documentation](https://developers.homebridge.io/). A full list of all supported service types, and their characteristics is available on this site.
-
-### Clone As Template
-
-Click the link below to create a new GitHub Repository using this template, or click the *Use This Template* button above.
-
-<span align="center">
-
-### [Create New Repository From Template](https://github.com/homebridge/homebridge-plugin-template/generate)
-
-</span>
-
-### Setup Development Environment
-
-To develop Homebridge plugins you must have Node.js 18 or later installed, and a modern code editor such as [VS Code](https://code.visualstudio.com/). This plugin template uses [TypeScript](https://www.typescriptlang.org/) to make development easier and comes with pre-configured settings for [VS Code](https://code.visualstudio.com/) and ESLint. If you are using VS Code install these extensions:
-
-- [ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint)
-
-### Install Development Dependencies
-
-Using a terminal, navigate to the project folder and run this command to install the development dependencies:
-
-```shell
-npm install
+```sh
+npm install -g homebridge-lametric
 ```
 
-### Update package.json
+Then add the platform to your Homebridge configuration.
 
-Open the [`package.json`](./package.json) and change the following attributes:
+## Configuration
 
-- `name` - this should be prefixed with `homebridge-` or `@username/homebridge-`, is case-sensitive, and contains no spaces nor special characters apart from a dash `-`
-- `displayName` - this is the "nice" name displayed in the Homebridge UI
-- `homepage` - link to your GitHub repo's `README.md`
-- `repository.url` - link to your GitHub repo
-- `bugs.url` - link to your GitHub repo issues page
+The platform name is:
 
-When you are ready to publish the plugin you should set `private` to false, or remove the attribute entirely.
-
-### Update Plugin Defaults
-
-Open the [`src/settings.ts`](./src/settings.ts) file and change the default values:
-
-- `PLATFORM_NAME` - Set this to be the name of your platform. This is the name of the platform that users will use to register the plugin in the Homebridge `config.json`.
-- `PLUGIN_NAME` - Set this to be the same name you set in the [`package.json`](./package.json) file.
-
-Open the [`config.schema.json`](./config.schema.json) file and change the following attribute:
-
-- `pluginAlias` - set this to match the `PLATFORM_NAME` you defined in the previous step.
-
-See the [Homebridge API docs](https://developers.homebridge.io/#/config-schema#default-values) for more details on the other attributes you can set in the `config.schema.json` file.
-
-### Build Plugin
-
-TypeScript needs to be compiled into JavaScript before it can run. The following command will compile the contents of your [`src`](./src) directory and put the resulting code into the `dist` folder.
-
-```shell
-npm run build
+```json
+"platform": "LaMetricPlatform"
 ```
 
-### Link To Homebridge
+### Single Device Example
 
-Run this command so your global installation of Homebridge can discover the plugin in your development environment:
-
-```shell
-npm link
-```
-
-You can now start Homebridge, use the `-D` flag, so you can see debug log messages in your plugin:
-
-```shell
-homebridge -D
-```
-
-### Watch For Changes and Build Automatically
-
-If you want to have your code compile automatically as you make changes, and restart Homebridge automatically between changes, you first need to add your plugin as a platform in `./test/hbConfig/config.json`:
-```
+```json
 {
-...
-    "platforms": [
-        {
-            "name": "Config",
-            "port": 8581,
-            "platform": "config"
-        },
-        {
-            "name": "<PLUGIN_NAME>",
-            //... any other options, as listed in config.schema.json ...
-            "platform": "<PLATFORM_NAME>"
-        }
-    ]
+  "platform": "LaMetricPlatform",
+  "name": "LaMetric",
+  "ip": "192.168.1.52",
+  "port": 4343,
+  "apiKey": "YOUR_LAMETRIC_API_KEY",
+  "apps": [
+    {
+      "id": "clock",
+      "name": "Clock",
+      "package": "com.lametric.clock",
+      "widget": "00000000000000000000000000000000"
+    },
+    {
+      "id": "blackout",
+      "name": "Blackout",
+      "package": "com.lametric.bc174be97cb45248d1b7f6003ed71600",
+      "widget": "YOUR_BLACKOUT_WIDGET_ID"
+    },
+    {
+      "id": "crypto",
+      "name": "Crypto",
+      "package": "com.lametric.439e235927e03d3f184562dd909174bf",
+      "widget": "YOUR_CRYPTO_WIDGET_ID"
+    }
+  ]
 }
 ```
 
-and then you can run:
+### Multiple Device Example
 
-```shell
-npm run watch
+```json
+{
+  "platform": "LaMetricPlatform",
+  "name": "LaMetric",
+  "devices": [
+    {
+      "id": "office",
+      "name": "Office LaMetric",
+      "ip": "192.168.1.52",
+      "port": 4343,
+      "apiKey": "YOUR_LAMETRIC_API_KEY",
+      "apps": [
+        {
+          "id": "clock",
+          "name": "Clock",
+          "package": "com.lametric.clock",
+          "widget": "00000000000000000000000000000000"
+        }
+      ]
+    }
+  ]
+}
 ```
 
-This will launch an instance of Homebridge in debug mode which will restart every time you make a change to the source code. It will load the config stored in the default location under `~/.homebridge`. You may need to stop other running instances of Homebridge while using this command to prevent conflicts. You can adjust the Homebridge startup command in the [`nodemon.json`](./nodemon.json) file.
+## App Configuration
 
-### Customise Plugin
+LaMetric apps are identified by package and widget IDs. The plugin can discover installed apps from the device, but defining important apps explicitly gives stable names and enables special actions.
 
-You can now start customising the plugin template to suit your requirements.
+Recommended app IDs:
 
-- [`src/platform.ts`](./src/platform.ts) - this is where your device setup and discovery should go.
-- [`src/platformAccessory.ts`](./src/platformAccessory.ts) - this is where your accessory control logic should go, you can rename or create multiple instances of this file for each accessory type you need to implement as part of your platform plugin. You can refer to the [developer documentation](https://developers.homebridge.io/) to see what characteristics you need to implement for each service type.
-- [`config.schema.json`](./config.schema.json) - update the config schema to match the config you expect from the user. See the [Plugin Config Schema Documentation](https://developers.homebridge.io/#/config-schema).
+- `clock`: used when HomeKit turns the display on.
+- `blackout`: used when HomeKit turns the display off.
+- `crypto`: used by the `Show Crypto` helper switch.
 
-### Versioning Your Plugin
+Each app entry supports:
 
-Given a version number `MAJOR`.`MINOR`.`PATCH`, such as `1.4.3`, increment the:
+| Field | Required | Description |
+| --- | --- | --- |
+| `id` | No | Short identifier used by helper actions, for example `clock`, `blackout`, or `crypto`. |
+| `name` | No | Display name shown in HomeKit input sources. |
+| `package` | Yes | LaMetric app package identifier. |
+| `widget` | Yes | LaMetric widget identifier. |
 
-1. **MAJOR** version when you make breaking changes to your plugin,
-2. **MINOR** version when you add functionality in a backwards compatible manner, and
-3. **PATCH** version when you make backwards compatible bug fixes.
+## HomeKit Accessories
 
-You can use the `npm version` command to help you with this:
+For every configured LaMetric device, the plugin creates:
 
-```shell
-# major update / breaking changes
-npm version major
+| Accessory | Purpose |
+| --- | --- |
+| LaMetric TV | Main on/off state and app input selection. |
+| LaMetric Light | Display brightness and display active state. |
+| LaMetric Speaker | Volume and mute controls. |
+| Show Crypto | Momentary helper switch for showing the configured crypto widget. |
+| Wake Display | Momentary helper switch for a short brightness wake animation. |
 
-# minor update / new features
-npm version update
+## Development
 
-# patch / bugfixes
-npm version patch
+Install dependencies:
+
+```sh
+npm install
 ```
 
-### Publish Package
+Build the plugin:
 
-When you are ready to publish your plugin to [npm](https://www.npmjs.com/), make sure you have removed the `private` attribute from the [`package.json`](./package.json) file then run:
-
-```shell
-npm publish
+```sh
+npm run build
 ```
 
-If you are publishing a scoped plugin, i.e. `@username/homebridge-xxx` you will need to add `--access=public` to command the first time you publish.
+Run linting:
 
-#### Publishing Beta Versions
-
-You can publish *beta* versions of your plugin for other users to test before you release it to everyone.
-
-```shell
-# create a new pre-release version (eg. 2.1.0-beta.1)
-npm version prepatch --preid beta
-
-# publish to @beta
-npm publish --tag beta
+```sh
+npm run lint
 ```
 
-Users can then install the  *beta* version by appending `@beta` to the install command, for example:
+During development, link the plugin into your local Homebridge installation:
 
-```shell
-sudo npm install -g homebridge-example-plugin@beta
+```sh
+npm link
 ```
 
-### Best Practices
+## Notes
 
-Consider creating your plugin with the [Homebridge Verified](https://github.com/homebridge/verified) criteria in mind. This will help you to create a plugin that is easy to use and works well with Homebridge.
-You can then submit your plugin to the Homebridge Verified list for review.
-The most up-to-date criteria can be found [here](https://github.com/homebridge/verified#requirements).
-For reference, the current criteria are:
+- The plugin communicates with the LaMetric local API over HTTPS on port `4343` by default.
+- The local LaMetric API uses a self-signed certificate, so the plugin accepts that certificate for device requests.
+- Keep your LaMetric API key private. Do not commit real API keys to GitHub.
 
-- **General**
-  - The plugin must be of type [dynamic platform](https://developers.homebridge.io/#/#dynamic-platform-template).
-  - The plugin must not offer the same nor less functionality than that of any existing **verified** plugin.
-- **Repo**
-  - The plugin must be published to NPM and the source code available on a GitHub repository, with issues enabled.
-  - A GitHub release should be created for every new version of your plugin, with release notes.
-- **Environment**
-  - The plugin must run on all [supported LTS versions of Node.js](https://github.com/homebridge/homebridge/wiki/How-To-Update-Node.js), at the time of writing this is Node v18, v20 and v22.
-  - The plugin must successfully install and not start unless it is configured.
-  - The plugin must not execute post-install scripts that modify the users' system in any way.
-  - The plugin must not require the user to run Homebridge in a TTY or with non-standard startup parameters, even for initial configuration.
-- **Codebase**
-  - The plugin must implement the [Homebridge Plugin Settings GUI](https://developers.homebridge.io/#/config-schema).
-  - The plugin must not contain any analytics or calls that enable you to track the user.
-  - If the plugin needs to write files to disk (cache, keys, etc.), it must store them inside the Homebridge storage directory.
-  - The plugin must not throw unhandled exceptions, the plugin must catch and log its own errors.
+## License
 
-### Useful Links
-
-Note these links are here for help but are not supported/verified by the Homebridge team
-
-- [Custom Characteristics](https://github.com/homebridge/homebridge-plugin-template/issues/20)
+Apache-2.0

@@ -4,19 +4,23 @@
   "type": "module",
   "version": "1.0.0",
   "private": true,
-  "description": "Homebridge plugin to control LaMetric apps and display.",
-  "author": "Rafael",
+  "description": "Homebridge plugin for controlling LaMetric Time devices from Apple HomeKit.",
+  "author": "Rafael Reverberi",
   "license": "Apache-2.0",
-  "homepage": "https://github.com/Feuervogel8128/homebridge-lametric#readme",
+  "homepage": "https://github.com/rafaelreverberi/homebridge-lametric#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Feuervogel8128/homebridge-lametric.git"
+    "url": "git+ssh://git@github.com/rafaelreverberi/homebridge-lametric.git"
   },
   "bugs": {
-    "url": "https://github.com/USERNAME/GITHUB_PROJECT_NAME/issues"
+    "url": "https://github.com/rafaelreverberi/homebridge-lametric/issues"
   },
   "keywords": [
-    "homebridge-plugin"
+    "homebridge-plugin",
+    "homebridge",
+    "homekit",
+    "lametric",
+    "lametric-time"
   ],
   "main": "dist/index.js",
   "engines": {

@@ -1,4 +1,4 @@
-import { API, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig, Service, Characteristic } from 'homebridge';
+import { API, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig } from 'homebridge';
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings.js';
 import { LaMetricAccessory } from './platformAccessory.js';
 
@@ -76,8 +76,6 @@ export class LaMetricPlatform implements DynamicPlatformPlugin {
       this.log.info(`Config for ${device.name}: ip=${device.ip}, port=${device.port}, apps=${device.apps?.length ?? 0}`);
       const stableId = device.id || `${device.ip}:${device.port}`;
 
-      const baseUuid = this.api.hap.uuid.generate(stableId);
-
       // Helper to find cached accessory by uuid
       const findCached = (u: string) => this.accessories.find(a => a.UUID === u);
 
@@ -101,9 +99,9 @@ export class LaMetricPlatform implements DynamicPlatformPlugin {
             const info = cached.getService(this.api.hap.Service.AccessoryInformation)
               || cached.addService(this.api.hap.Service.AccessoryInformation);
             info.setCharacteristic(this.api.hap.Characteristic.Manufacturer, 'LaMetric')
-                .setCharacteristic(this.api.hap.Characteristic.Model, 'LaMetric Time')
-                .setCharacteristic(this.api.hap.Characteristic.SerialNumber, `${stableId}:${meta.role}`)
-                .setCharacteristic(this.api.hap.Characteristic.Name, meta.name);
+              .setCharacteristic(this.api.hap.Characteristic.Model, 'LaMetric Time')
+              .setCharacteristic(this.api.hap.Characteristic.SerialNumber, `${stableId}:${meta.role}`)
+              .setCharacteristic(this.api.hap.Characteristic.Name, meta.name);
             this.api.updatePlatformAccessories([cached]);
           } catch (e) {
             this.log.warn('Failed to sync AccessoryInformation for', cached.displayName, e as any);
@@ -118,9 +116,9 @@ export class LaMetricPlatform implements DynamicPlatformPlugin {
           const info = accessory.getService(this.api.hap.Service.AccessoryInformation)
             || accessory.addService(this.api.hap.Service.AccessoryInformation);
           info.setCharacteristic(this.api.hap.Characteristic.Manufacturer, 'LaMetric')
-              .setCharacteristic(this.api.hap.Characteristic.Model, 'LaMetric Time')
-              .setCharacteristic(this.api.hap.Characteristic.SerialNumber, `${stableId}:${meta.role}`)
-              .setCharacteristic(this.api.hap.Characteristic.Name, meta.name);
+            .setCharacteristic(this.api.hap.Characteristic.Model, 'LaMetric Time')
+            .setCharacteristic(this.api.hap.Characteristic.SerialNumber, `${stableId}:${meta.role}`)
+            .setCharacteristic(this.api.hap.Characteristic.Name, meta.name);
           new LaMetricAccessory(this, accessory);
           this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
         }

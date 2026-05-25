@@ -12,27 +12,122 @@
         "default": "LaMetric"
       },
       "ip": {
-        "title": "LaMetric IP-Adresse",
+        "title": "LaMetric IP Address",
         "type": "string",
-        "required": true,
-        "default": "192.168.1.52"
+        "placeholder": "192.168.1.52",
+        "description": "IP address of a single LaMetric device. Use devices[] for multiple devices."
+      },
+      "port": {
+        "title": "LaMetric API Port",
+        "type": "integer",
+        "default": 4343,
+        "minimum": 1,
+        "maximum": 65535
       },
       "apiKey": {
         "title": "LaMetric API Key",
         "type": "string",
-        "required": true
+        "description": "Developer API key for a single LaMetric device."
       },
       "apps": {
-        "title": "Apps (Liste von App IDs)",
+        "title": "Apps",
         "type": "array",
+        "description": "Optional app/widget definitions for a single LaMetric device.",
         "items": {
-          "type": "string"
-        },
-        "default": [
-          "com.lametric.clock",
-          "com.lametric.weather",
-          "com.lametric.radio"
-        ]
+          "type": "object",
+          "properties": {
+            "id": {
+              "title": "ID",
+              "type": "string",
+              "placeholder": "clock"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string",
+              "placeholder": "Clock"
+            },
+            "package": {
+              "title": "Package",
+              "type": "string",
+              "required": true,
+              "placeholder": "com.lametric.clock"
+            },
+            "widget": {
+              "title": "Widget",
+              "type": "string",
+              "required": true
+            }
+          }
+        }
+      },
+      "devices": {
+        "title": "Devices",
+        "type": "array",
+        "description": "Configure multiple LaMetric devices. When this is set, top-level ip/apiKey are ignored.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "title": "Stable ID",
+              "type": "string",
+              "description": "Optional stable identifier. If omitted, ip:port is used."
+            },
+            "name": {
+              "title": "Name",
+              "type": "string",
+              "required": true,
+              "default": "LaMetric"
+            },
+            "ip": {
+              "title": "IP Address",
+              "type": "string",
+              "required": true,
+              "placeholder": "192.168.1.52"
+            },
+            "port": {
+              "title": "API Port",
+              "type": "integer",
+              "default": 4343,
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "apiKey": {
+              "title": "API Key",
+              "type": "string",
+              "required": true
+            },
+            "apps": {
+              "title": "Apps",
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "title": "ID",
+                    "type": "string",
+                    "placeholder": "clock"
+                  },
+                  "name": {
+                    "title": "Name",
+                    "type": "string",
+                    "placeholder": "Clock"
+                  },
+                  "package": {
+                    "title": "Package",
+                    "type": "string",
+                    "required": true,
+                    "placeholder": "com.lametric.clock"
+                  },
+                  "widget": {
+                    "title": "Widget",
+                    "type": "string",
+                    "required": true
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     }
   }

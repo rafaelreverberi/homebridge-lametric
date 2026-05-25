@@ -33,7 +33,7 @@ export class LaMetricAccessory {
         const appsList: Array<{ id?: string; name?: string; package: string; widget: string }> = [];
         for (const [pkg, app] of Object.entries<any>(data)) {
           if (app && app.widgets) {
-            for (const [wid, widget] of Object.entries<any>(app.widgets)) {
+            for (const wid of Object.keys(app.widgets)) {
               appsList.push({
                 id: wid,
                 name: app.title ?? pkg,
@@ -59,7 +59,9 @@ export class LaMetricAccessory {
   private async findAppAny(key: string): Promise<{ package: string; widget: string; name?: string } | null> {
     // Try config-defined apps first
     const fromConfig = this.apps.find(a => a.id === key || a.name?.toLowerCase() === key.toLowerCase() || a.package === key);
-    if (fromConfig) return { package: fromConfig.package, widget: fromConfig.widget, name: fromConfig.name };
+    if (fromConfig) {
+      return { package: fromConfig.package, widget: fromConfig.widget, name: fromConfig.name };
+    }
     // Fallback: fetch from device
     const fromDevice = await this.fetchAppsFromDevice();
     const m = fromDevice.find(a => a.id === key || a.name?.toLowerCase() === key.toLowerCase() || a.package === key);
@@ -95,8 +97,6 @@ export class LaMetricAccessory {
   private async computeActive(): Promise<0 | 1> {
     // Rule: if foreground is "blackout" app → INACTIVE; if foreground is "clock" or anything else → ACTIVE
     const blackout = this.findApp('blackout') || this.findApp('com.lametric.bc174be97cb45248d1b7f6003ed71600');
-    const clock = this.findApp('clock') || this.findApp('com.lametric.clock');
-
     try {
       const fg = await this.getForegroundApp();
       if (fg?.package) {
@@ -116,7 +116,9 @@ export class LaMetricAccessory {
     try {
       const info = await this.getDeviceInfo();
       const display = info?.display;
-      if (!display) return 0;
+      if (!display) {
+        return 0;
+      }
       const enabled = display.enabled !== false;
       const b = typeof display.brightness === 'number' ? display.brightness : 0;
       const val: 0 | 1 = (enabled && b >= 2) ? 1 : 0;
@@ -152,7 +154,9 @@ export class LaMetricAccessory {
 
       this.brightnessService.getCharacteristic(Characteristic.On)
         .onGet(async () => (await this.computeActive()) === Characteristic.Active.ACTIVE)
-        .onSet(async (v) => { await this.setActive(!!v); });
+        .onSet(async (v) => {
+          await this.setActive(!!v);
+        });
 
       this.brightnessService.getCharacteristic(Characteristic.Brightness)
         .onGet(this.getBrightness.bind(this))
@@ -166,7 +170,9 @@ export class LaMetricAccessory {
           try {
             const info = await this.getDeviceInfo();
             const display = info?.display ?? {};
-            if (typeof display.brightness === 'number') brightness = display.brightness;
+            if (typeof display.brightness === 'number') {
+              brightness = display.brightness;
+            }
           } catch {}
           if (this.brightnessService) {
             this.brightnessService.updateCharacteristic(Characteristic.On, active === 1);
@@ -199,10 +205,19 @@ export class LaMetricAccessory {
 
       speakerService.getCharacteristic(Characteristic.Mute)
         .onGet(async () => {
-          try { const info = await this.getDeviceInfo(); return (info?.audio?.volume ?? 0) === 0; } catch { return false; }
+          try {
+            const info = await this.getDeviceInfo();
+            return (info?.audio?.volume ?? 0) === 0;
+          } catch {
+            return false;
+          }
         })
         .onSet(async (v) => {
-          try { await this.request('PUT', '/api/v2/device/audio', { volume: v ? 0 : 50 }); } catch (e) { this.platform.log.error('Failed to set mute', e); }
+          try {
+            await this.request('PUT', '/api/v2/device/audio', { volume: v ? 0 : 50 });
+          } catch (e) {
+            this.platform.log.error('Failed to set mute', e);
+          }
         });
 
       return; // speaker accessory done
@@ -224,21 +239,47 @@ export class LaMetricAccessory {
         .onSet(async (v) => {
           try {
             if (v) {
-              if (this.cryptoTimer) { clearTimeout(this.cryptoTimer); this.cryptoTimer = undefined; }
-              const session = Date.now(); this.cryptoSessionId = session;
+              if (this.cryptoTimer) {
+                clearTimeout(this.cryptoTimer);
+                this.cryptoTimer = undefined;
+              }
+              const session = Date.now();
+              this.cryptoSessionId = session;
               let crypto = await this.findAppAny('crypto');
-              if (!crypto) { crypto = { package: 'com.lametric.439e235927e03d3f184562dd909174bf', widget: '99113d90618f445a8b299f0f1d2c94d4', name: 'Crypto' }; }
+              if (!crypto) {
+                crypto = {
+                  package: 'com.lametric.439e235927e03d3f184562dd909174bf',
+                  widget: '99113d90618f445a8b299f0f1d2c94d4',
+                  name: 'Crypto',
+                };
+              }
               await this.activateWidget(crypto);
               cryptoSwitch.updateCharacteristic(OnChar, false);
               this.cryptoTimer = setTimeout(async () => {
-                if (this.cryptoSessionId !== session) return;
-                try { const clock = this.findApp('clock') || this.findApp('com.lametric.clock'); if (clock) await this.activateWidget(clock); } catch {}
-                finally { if (this.cryptoSessionId === session) this.cryptoTimer = undefined; }
+                if (this.cryptoSessionId !== session) {
+                  return;
+                }
+                try {
+                  const clock = this.findApp('clock') || this.findApp('com.lametric.clock');
+                  if (clock) {
+                    await this.activateWidget(clock);
+                  }
+                } catch {} finally {
+                  if (this.cryptoSessionId === session) {
+                    this.cryptoTimer = undefined;
+                  }
+                }
               }, SHOW_CRYPTO_MS);
             } else {
-              if (this.cryptoTimer) { clearTimeout(this.cryptoTimer); this.cryptoTimer = undefined; }
+              if (this.cryptoTimer) {
+                clearTimeout(this.cryptoTimer);
+                this.cryptoTimer = undefined;
+              }
               this.cryptoSessionId = 0;
-              const clock = this.findApp('clock') || this.findApp('com.lametric.clock'); if (clock) await this.activateWidget(clock);
+              const clock = this.findApp('clock') || this.findApp('com.lametric.clock');
+              if (clock) {
+                await this.activateWidget(clock);
+              }
               cryptoSwitch.updateCharacteristic(OnChar, false);
             }
           } catch (e) {
@@ -268,31 +309,53 @@ export class LaMetricAccessory {
         .onSet(async (v) => {
           try {
             if (v) {
-              if (this.wakeTimer) { clearTimeout(this.wakeTimer); this.wakeTimer = undefined; }
+              if (this.wakeTimer) {
+                clearTimeout(this.wakeTimer);
+                this.wakeTimer = undefined;
+              }
               const fg = await this.getForegroundApp();
               this.lastAppBeforeWake = (fg && fg.package && fg.widget) ? { package: fg.package, widget: fg.widget, name: fg.title } : null;
               await this.setBrightness(2);
-              const clock = this.findApp('clock') || this.findApp('com.lametric.clock'); if (clock) await this.activateWidget(clock);
+              const clock = this.findApp('clock') || this.findApp('com.lametric.clock');
+              if (clock) {
+                await this.activateWidget(clock);
+              }
               let current = 2;
               const brighten = setInterval(async () => {
-                if (current < WAKE_MAX_BRIGHTNESS) { current += WAKE_STEP; await this.setBrightness(current); } else { clearInterval(brighten); }
+                if (current < WAKE_MAX_BRIGHTNESS) {
+                  current += WAKE_STEP;
+                  await this.setBrightness(current);
+                } else {
+                  clearInterval(brighten);
+                }
               }, STEP_INTERVAL);
 
               this.wakeTimer = setTimeout(async () => {
                 clearInterval(brighten);
                 // dim back down smoothly to 2
                 let down = WAKE_MAX_BRIGHTNESS;
-                while (down > 2) { down -= WAKE_STEP; await this.setBrightness(down); await new Promise(res => setTimeout(res, STEP_INTERVAL)); }
+                while (down > 2) {
+                  down -= WAKE_STEP;
+                  await this.setBrightness(down);
+                  await new Promise(res => setTimeout(res, STEP_INTERVAL));
+                }
                 await this.setBrightness(2);
                 if (this.lastAppBeforeWake) {
-                  try { await this.activateWidget(this.lastAppBeforeWake); await new Promise(r => setTimeout(r, 1200)); await this.setBrightness(100); } catch {}
+                  try {
+                    await this.activateWidget(this.lastAppBeforeWake);
+                    await new Promise(r => setTimeout(r, 1200));
+                    await this.setBrightness(100);
+                  } catch {}
                 }
                 this.wakeTimer = undefined;
               }, WAKE_DURATION);
 
               wakeSwitch.updateCharacteristic(OnChar, false);
             } else {
-              if (this.wakeTimer) { clearTimeout(this.wakeTimer); this.wakeTimer = undefined; }
+              if (this.wakeTimer) {
+                clearTimeout(this.wakeTimer);
+                this.wakeTimer = undefined;
+              }
               this.lastAppBeforeWake = null;
               wakeSwitch.updateCharacteristic(OnChar, false);
             }
@@ -353,7 +416,9 @@ export class LaMetricAccessory {
       for (const s of existingInputs) {
         const subtype: string | undefined = (s as any).subtype;
         if (!subtype || !desiredKeys.has(subtype)) {
-          try { this.accessory.removeService(s); } catch {}
+          try {
+            this.accessory.removeService(s);
+          } catch {}
         }
       }
 
@@ -383,7 +448,9 @@ export class LaMetricAccessory {
             if (fg) {
               const subtype = `${fg.package}-${fg.widget}`;
               const stableId = subtypeToId.get(subtype);
-              if (typeof stableId === 'number') return stableId;
+              if (typeof stableId === 'number') {
+                return stableId;
+              }
             }
           } catch {}
           return appsList.length > 0 ? hashId(`${appsList[0].package}-${appsList[0].widget}`) : 0;
@@ -394,7 +461,9 @@ export class LaMetricAccessory {
             // Ensure TV is active before switching
             const Active = Characteristic.Active;
             const current = tvService.getCharacteristic(Active).value as number | undefined;
-            if (current !== Active.ACTIVE) tvService.updateCharacteristic(Active, Active.ACTIVE);
+            if (current !== Active.ACTIVE) {
+              tvService.updateCharacteristic(Active, Active.ACTIVE);
+            }
             await this.activateWidget(app);
             this.platform.log.info(`Switched to app: ${app.name ?? app.package}`);
           }
