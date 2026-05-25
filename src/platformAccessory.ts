@@ -11,6 +11,7 @@ export class LaMetricAccessory {
   private cryptoSessionId = 0;
   private wakeTimer?: NodeJS.Timeout;
   private lastAppBeforeWake: { package: string; widget: string; name?: string } | null = null;
+  private actionTimers = new Map<string, NodeJS.Timeout>();
 
   private get device() {
     const ctx = (this.accessory.context as any)?.device ?? {};
@@ -24,6 +25,26 @@ export class LaMetricAccessory {
   private get apps(): Array<{ id?: string; name?: string; package: string; widget: string }> {
     const ctx = (this.accessory.context as any)?.device ?? {};
     return Array.isArray(ctx.apps) ? ctx.apps : [];
+  }
+
+  private get actions(): Array<{
+    enabled?: boolean;
+    id?: string;
+    name?: string;
+    type: 'temporaryApp' | 'wakeDisplay';
+    appId?: string;
+    package?: string;
+    widget?: string;
+    restoreAppId?: string;
+    durationMs?: number;
+    minBrightness?: number;
+    maxBrightness?: number;
+    step?: number;
+    stepIntervalMs?: number;
+  }> {
+    const ctx = (this.accessory.context as any)?.device ?? {};
+    const actions = Array.isArray(ctx.actions) ? ctx.actions : [];
+    return actions.filter((action: any) => action?.enabled !== false);
   }
 
   private async fetchAppsFromDevice(): Promise<Array<{ id?: string; name?: string; package: string; widget: string }>> {
@@ -58,14 +79,38 @@ export class LaMetricAccessory {
   // Robustly find an app by id/name/package from config or device
   private async findAppAny(key: string): Promise<{ package: string; widget: string; name?: string } | null> {
     // Try config-defined apps first
-    const fromConfig = this.apps.find(a => a.id === key || a.name?.toLowerCase() === key.toLowerCase() || a.package === key);
+    const fromConfig = this.apps.find(a => this.appMatches(a, key));
     if (fromConfig) {
       return { package: fromConfig.package, widget: fromConfig.widget, name: fromConfig.name };
     }
     // Fallback: fetch from device
     const fromDevice = await this.fetchAppsFromDevice();
-    const m = fromDevice.find(a => a.id === key || a.name?.toLowerCase() === key.toLowerCase() || a.package === key);
+    const m = fromDevice.find(a => this.appMatches(a, key));
     return m ? { package: m.package, widget: m.widget, name: m.name } : null;
+  }
+
+  private appMatches(app: { id?: string; name?: string; package: string }, key: string) {
+    const normalizedKey = key.toLowerCase();
+    const id = app.id?.toLowerCase();
+    const name = app.name?.toLowerCase();
+    const packageName = app.package.toLowerCase();
+
+    return id === normalizedKey
+      || name === normalizedKey
+      || packageName === normalizedKey
+      || Boolean(name?.includes(normalizedKey))
+      || packageName.includes(normalizedKey);
+  }
+
+  private async findFirstApp(keys: string[]) {
+    for (const key of keys) {
+      const app = await this.findAppAny(key);
+      if (app) {
+        return app;
+      }
+    }
+
+    return null;
   }
 
   private async activateWidget(app: { package: string; widget: string }) {
@@ -96,7 +141,12 @@ export class LaMetricAccessory {
 
   private async computeActive(): Promise<0 | 1> {
     // Rule: if foreground is "blackout" app → INACTIVE; if foreground is "clock" or anything else → ACTIVE
-    const blackout = this.findApp('blackout') || this.findApp('com.lametric.bc174be97cb45248d1b7f6003ed71600');
+    const blackout = await this.findFirstApp([
+      'blackout',
+      'blackscreen',
+      'black screen',
+      'com.lametric.bc174be97cb45248d1b7f6003ed71600',
+    ]);
     try {
       const fg = await this.getForegroundApp();
       if (fg?.package) {
@@ -109,7 +159,8 @@ export class LaMetricAccessory {
         return 1;
       }
     } catch (e) {
-      this.platform.log.warn('computeActive (apps) failed, will fallback to display', e as any);
+      this.platform.log.warn('computeActive (apps) failed, returning ACTIVE fallback', e as any);
+      return 1; // avoid spinner in Home app when the device is unreachable
     }
 
     // Fallback to display info
@@ -381,9 +432,50 @@ export class LaMetricAccessory {
       .onGet(this.getActive.bind(this))
       .onSet(this.setActive.bind(this));
 
-    // Optional hardware button mapping (keep if you use it)
-    this.service.getCharacteristic(Characteristic.VolumeSelector)
+    this.service.getCharacteristic(Characteristic.Brightness)
+      .onGet(this.getBrightness.bind(this))
+      .onSet(this.setBrightness.bind(this));
+
+    // Display brightness remains a Lightbulb service, but now on the same accessory.
+    this.brightnessService = this.accessory.getService(Service.Lightbulb)
+      || this.accessory.addService(Service.Lightbulb, 'Display Brightness', 'lametric-display-brightness');
+    this.brightnessService.setCharacteristic(Characteristic.Name, 'Display Brightness');
+    this.brightnessService.getCharacteristic(Characteristic.On)
+      .onGet(async () => (await this.computeActive()) === Characteristic.Active.ACTIVE)
+      .onSet(async (v) => {
+        await this.setActive(!!v);
+      });
+    this.brightnessService.getCharacteristic(Characteristic.Brightness)
+      .onGet(this.getBrightness.bind(this))
+      .onSet(this.setBrightness.bind(this));
+
+    const speakerService = this.accessory.getService(Service.TelevisionSpeaker)
+      || this.accessory.addService(Service.TelevisionSpeaker, 'Speaker');
+    speakerService.setCharacteristic(Characteristic.Active, Characteristic.Active.ACTIVE);
+    speakerService.setCharacteristic(Characteristic.VolumeControlType, Characteristic.VolumeControlType.ABSOLUTE);
+    speakerService.getCharacteristic(Characteristic.Volume)
+      .onGet(this.getVolume.bind(this))
       .onSet(this.setVolume.bind(this));
+    speakerService.getCharacteristic(Characteristic.VolumeSelector)
+      .onSet(this.setVolumeSelector.bind(this));
+    speakerService.getCharacteristic(Characteristic.Mute)
+      .onGet(async () => {
+        try {
+          const info = await this.getDeviceInfo();
+          return (info?.audio?.volume ?? 0) === 0;
+        } catch {
+          return false;
+        }
+      })
+      .onSet(async (v) => {
+        try {
+          await this.request('PUT', '/api/v2/device/audio', { volume: v ? 0 : 50 });
+        } catch (e) {
+          this.platform.log.error('Failed to set mute', e);
+        }
+      });
+
+    this.syncActionServices(Service, Characteristic);
 
     // Input sources
     const tvService = this.service;
@@ -475,37 +567,204 @@ export class LaMetricAccessory {
       try {
         const active = await this.computeActive();
         this.service.updateCharacteristic(Characteristic.Active, active);
+        if (this.brightnessService) {
+          this.brightnessService.updateCharacteristic(Characteristic.On, active === 1);
+        }
       } catch (e) {
         this.platform.log.warn('TV status refresh failed', e as any);
       }
     }, 15000);
   }
 
+  private syncActionServices(Service: any, Characteristic: any) {
+    const enabledActions = this.actions;
+    const actionSubtypes = new Set(enabledActions.map((action, index) => this.actionSubtype(action, index)));
+    const existingActionSwitches = this.accessory.services.filter(service =>
+      service.UUID === Service.Switch.UUID && String((service as any).subtype ?? '').startsWith('lametric-action-'));
+
+    for (const service of existingActionSwitches) {
+      const subtype = String((service as any).subtype ?? '');
+      if (!actionSubtypes.has(subtype)) {
+        try {
+          this.accessory.removeService(service);
+        } catch {}
+      }
+    }
+
+    enabledActions.forEach((action, index) => {
+      const subtype = this.actionSubtype(action, index);
+      const name = action.name || action.id || `LaMetric Action ${index + 1}`;
+      const actionSwitch = this.accessory.getService(subtype)
+        || this.accessory.addService(Service.Switch, name, subtype);
+      actionSwitch.setCharacteristic(Characteristic.Name, name);
+      actionSwitch.getCharacteristic(Characteristic.On)
+        .onGet(() => false)
+        .onSet(async (value) => {
+          if (!value) {
+            this.clearActionTimer(subtype);
+            actionSwitch.updateCharacteristic(Characteristic.On, false);
+            return;
+          }
+          try {
+            await this.runAction(action, subtype);
+          } catch (e) {
+            this.platform.log.error(`Action ${name} failed`, e as any);
+          } finally {
+            actionSwitch.updateCharacteristic(Characteristic.On, false);
+          }
+        });
+    });
+  }
+
+  private actionSubtype(action: { id?: string; name?: string; type?: string }, index: number) {
+    const raw = action.id || action.name || `${action.type ?? 'action'}-${index + 1}`;
+    return `lametric-action-${raw.toLowerCase().replace(/[^a-z0-9_-]+/g, '-')}`;
+  }
+
+  private clearActionTimer(subtype: string) {
+    const timer = this.actionTimers.get(subtype);
+    if (timer) {
+      clearTimeout(timer);
+      this.actionTimers.delete(subtype);
+    }
+  }
+
+  private async runAction(action: {
+    type: 'temporaryApp' | 'wakeDisplay';
+    appId?: string;
+    package?: string;
+    widget?: string;
+    restoreAppId?: string;
+    durationMs?: number;
+    minBrightness?: number;
+    maxBrightness?: number;
+    step?: number;
+    stepIntervalMs?: number;
+  }, subtype: string) {
+    if (action.type === 'temporaryApp') {
+      await this.runTemporaryAppAction(action, subtype);
+      return;
+    }
+    if (action.type === 'wakeDisplay') {
+      await this.runWakeDisplayAction(action, subtype);
+      return;
+    }
+    throw new Error(`Unsupported action type: ${(action as any).type}`);
+  }
+
+  private async runTemporaryAppAction(action: {
+    appId?: string;
+    package?: string;
+    widget?: string;
+    restoreAppId?: string;
+    durationMs?: number;
+  }, subtype: string) {
+    this.clearActionTimer(subtype);
+    const app = action.package && action.widget
+      ? { package: action.package, widget: action.widget }
+      : await this.findAppAny(action.appId || '');
+    if (!app) {
+      throw new Error(`Could not find action app: ${action.appId || action.package || 'unknown'}`);
+    }
+
+    await this.activateWidget(app);
+
+    const durationMs = Number(action.durationMs ?? 80500);
+    if (durationMs <= 0) {
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      this.actionTimers.delete(subtype);
+      const restore = action.restoreAppId ? await this.findAppAny(action.restoreAppId) : await this.findAppAny('clock');
+      if (restore) {
+        await this.activateWidget(restore);
+      }
+    }, durationMs);
+    this.actionTimers.set(subtype, timer);
+  }
+
+  private async runWakeDisplayAction(action: {
+    durationMs?: number;
+    minBrightness?: number;
+    maxBrightness?: number;
+    step?: number;
+    stepIntervalMs?: number;
+    restoreAppId?: string;
+  }, subtype: string) {
+    this.clearActionTimer(subtype);
+    const minBrightness = Number(action.minBrightness ?? 2);
+    const maxBrightness = Number(action.maxBrightness ?? 25);
+    const step = Math.max(1, Number(action.step ?? 5));
+    const stepIntervalMs = Math.max(50, Number(action.stepIntervalMs ?? 200));
+    const durationMs = Math.max(0, Number(action.durationMs ?? 5000));
+    const fg = await this.getForegroundApp();
+    const previousApp = (fg && fg.package && fg.widget) ? { package: fg.package, widget: fg.widget, name: fg.title } : null;
+
+    await this.setBrightness(minBrightness);
+    const restoreStart = action.restoreAppId ? await this.findAppAny(action.restoreAppId) : await this.findAppAny('clock');
+    if (restoreStart) {
+      await this.activateWidget(restoreStart);
+    }
+
+    let current = minBrightness;
+    const brighten = setInterval(async () => {
+      if (current < maxBrightness) {
+        current = Math.min(maxBrightness, current + step);
+        await this.setBrightness(current);
+      } else {
+        clearInterval(brighten);
+      }
+    }, stepIntervalMs);
+
+    const timer = setTimeout(async () => {
+      this.actionTimers.delete(subtype);
+      clearInterval(brighten);
+      let down = maxBrightness;
+      while (down > minBrightness) {
+        down = Math.max(minBrightness, down - step);
+        await this.setBrightness(down);
+        await new Promise(res => setTimeout(res, stepIntervalMs));
+      }
+      if (previousApp) {
+        await this.activateWidget(previousApp);
+      }
+    }, durationMs);
+    this.actionTimers.set(subtype, timer);
+  }
+
   private async request(method: 'GET' | 'PUT', path: string, body?: any) {
     const { ip, port } = this.device;
     const url = `https://${ip}:${port}${path}`;
     const payload = body ? JSON.stringify(body) : undefined;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
 
     this.platform.log.info(`[HTTP ${method}] ${url} ${payload ? 'body=' + payload : ''}`);
 
-    const res = await fetch(url, {
-      method,
-      headers: {
-        'Authorization': `Basic ${Buffer.from(`dev:${this.device.apiKey}`).toString('base64')}`,
-        'Content-Type': 'application/json',
-      },
-      body: payload,
-      // @ts-ignore node-fetch agent type
-      agent: this.agent,
-    });
-
-    const text = await res.text();
-    this.platform.log.info(`[HTTP ${method}] ${res.status} ${res.statusText} response=${text}`);
-
     try {
-      return JSON.parse(text);
-    } catch {
-      return text;
+      const res = await fetch(url, {
+        method,
+        headers: {
+          'Authorization': `Basic ${Buffer.from(`dev:${this.device.apiKey}`).toString('base64')}`,
+          'Content-Type': 'application/json',
+        },
+        body: payload,
+        signal: controller.signal,
+        // @ts-ignore node-fetch agent type
+        agent: this.agent,
+      });
+
+      const text = await res.text();
+      this.platform.log.info(`[HTTP ${method}] ${res.status} ${res.statusText} response=${text}`);
+
+      try {
+        return JSON.parse(text);
+      } catch {
+        return text;
+      }
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
@@ -529,6 +788,17 @@ export class LaMetricAccessory {
       this.platform.log.error('Failed to set volume', e);
       throw e;
     }
+  }
+
+  async setVolumeSelector(value: CharacteristicValue) {
+    const Characteristic = this.platform.api.hap.Characteristic;
+    const current = Number(await this.getVolume());
+    const direction = Number(value);
+    const next = direction === Characteristic.VolumeSelector.DECREMENT
+      ? Math.max(0, current - 5)
+      : Math.min(100, current + 5);
+
+    await this.setVolume(next);
   }
 
   async setBrightness(value: CharacteristicValue) {
@@ -574,8 +844,13 @@ export class LaMetricAccessory {
 
   async setActive(value: CharacteristicValue) {
     const on = !!value;
-    const blackout = this.findApp('blackout') || this.findApp('com.lametric.bc174be97cb45248d1b7f6003ed71600');
-    const clock = this.findApp('clock') || this.findApp('com.lametric.clock');
+    const blackout = await this.findFirstApp([
+      'blackout',
+      'blackscreen',
+      'black screen',
+      'com.lametric.bc174be97cb45248d1b7f6003ed71600',
+    ]);
+    const clock = await this.findFirstApp(['clock', 'com.lametric.clock']);
 
     try {
       if (!on) {

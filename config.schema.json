@@ -21,8 +21,7 @@
         "title": "LaMetric API Port",
         "type": "integer",
         "default": 4343,
-        "minimum": 1,
-        "maximum": 65535
+        "description": "Standard port: 4343. Only change this if you know your LaMetric API is running on a different port."
       },
       "apiKey": {
         "title": "LaMetric API Key",
@@ -60,6 +59,129 @@
           }
         }
       },
+      "actions": {
+        "title": "Actions",
+        "type": "array",
+        "description": "Optional HomeKit switches for LaMetric actions. Actions are only exposed when enabled.",
+        "default": [
+          {
+            "enabled": false,
+            "id": "showCrypto",
+            "name": "Show Crypto",
+            "type": "temporaryApp",
+            "appId": "crypto",
+            "restoreAppId": "clock",
+            "durationMs": 80500
+          },
+          {
+            "enabled": false,
+            "id": "wakeDisplay",
+            "name": "Wake Display",
+            "type": "wakeDisplay",
+            "restoreAppId": "clock",
+            "durationMs": 5000,
+            "minBrightness": 2,
+            "maxBrightness": 25,
+            "step": 5,
+            "stepIntervalMs": 200
+          }
+        ],
+        "items": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "title": "Enabled",
+              "type": "boolean",
+              "default": false
+            },
+            "id": {
+              "title": "ID",
+              "type": "string",
+              "placeholder": "showCrypto"
+            },
+            "name": {
+              "title": "Name",
+              "type": "string",
+              "placeholder": "Show Crypto"
+            },
+            "type": {
+              "title": "Type",
+              "type": "string",
+              "required": true,
+              "default": "temporaryApp",
+              "oneOf": [
+                {
+                  "title": "Temporary App",
+                  "enum": [
+                    "temporaryApp"
+                  ]
+                },
+                {
+                  "title": "Wake Display",
+                  "enum": [
+                    "wakeDisplay"
+                  ]
+                }
+              ]
+            },
+            "appId": {
+              "title": "App ID",
+              "type": "string",
+              "description": "App id/name/package from the Apps list. Used by Temporary App actions.",
+              "placeholder": "crypto"
+            },
+            "package": {
+              "title": "Package",
+              "type": "string",
+              "description": "Optional direct LaMetric app package for Temporary App actions."
+            },
+            "widget": {
+              "title": "Widget",
+              "type": "string",
+              "description": "Optional direct LaMetric widget id for Temporary App actions."
+            },
+            "restoreAppId": {
+              "title": "Restore App ID",
+              "type": "string",
+              "description": "App id/name/package to return to after the action.",
+              "placeholder": "clock"
+            },
+            "durationMs": {
+              "title": "Duration (ms)",
+              "type": "integer",
+              "default": 5000,
+              "minimum": 0
+            },
+            "minBrightness": {
+              "title": "Minimum Brightness",
+              "type": "integer",
+              "default": 2,
+              "minimum": 0,
+              "maximum": 100
+            },
+            "maxBrightness": {
+              "title": "Maximum Brightness",
+              "type": "integer",
+              "default": 25,
+              "minimum": 0,
+              "maximum": 100
+            },
+            "step": {
+              "title": "Brightness Step",
+              "type": "integer",
+              "default": 5,
+              "minimum": 1,
+              "maximum": 100
+            },
+            "stepIntervalMs": {
+              "title": "Step Interval (ms)",
+              "type": "integer",
+              "default": 200,
+              "minimum": 50
+            }
+          }
+        }
+      },
       "devices": {
         "title": "Devices",
         "type": "array",
@@ -88,8 +210,7 @@
               "title": "API Port",
               "type": "integer",
               "default": 4343,
-              "minimum": 1,
-              "maximum": 65535
+              "description": "Standard port: 4343. Only change this if you know this LaMetric device uses a different API port."
             },
             "apiKey": {
               "title": "API Key",
@@ -122,6 +243,129 @@
                     "title": "Widget",
                     "type": "string",
                     "required": true
+                  }
+                }
+              }
+            },
+            "actions": {
+              "title": "Actions",
+              "type": "array",
+              "description": "Optional HomeKit switches for this LaMetric device. Actions are only exposed when enabled.",
+              "default": [
+                {
+                  "enabled": false,
+                  "id": "showCrypto",
+                  "name": "Show Crypto",
+                  "type": "temporaryApp",
+                  "appId": "crypto",
+                  "restoreAppId": "clock",
+                  "durationMs": 80500
+                },
+                {
+                  "enabled": false,
+                  "id": "wakeDisplay",
+                  "name": "Wake Display",
+                  "type": "wakeDisplay",
+                  "restoreAppId": "clock",
+                  "durationMs": 5000,
+                  "minBrightness": 2,
+                  "maxBrightness": 25,
+                  "step": 5,
+                  "stepIntervalMs": 200
+                }
+              ],
+              "items": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "title": "Enabled",
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "id": {
+                    "title": "ID",
+                    "type": "string",
+                    "placeholder": "showCrypto"
+                  },
+                  "name": {
+                    "title": "Name",
+                    "type": "string",
+                    "placeholder": "Show Crypto"
+                  },
+                  "type": {
+                    "title": "Type",
+                    "type": "string",
+                    "required": true,
+                    "default": "temporaryApp",
+                    "oneOf": [
+                      {
+                        "title": "Temporary App",
+                        "enum": [
+                          "temporaryApp"
+                        ]
+                      },
+                      {
+                        "title": "Wake Display",
+                        "enum": [
+                          "wakeDisplay"
+                        ]
+                      }
+                    ]
+                  },
+                  "appId": {
+                    "title": "App ID",
+                    "type": "string",
+                    "description": "App id/name/package from the Apps list. Used by Temporary App actions.",
+                    "placeholder": "crypto"
+                  },
+                  "package": {
+                    "title": "Package",
+                    "type": "string",
+                    "description": "Optional direct LaMetric app package for Temporary App actions."
+                  },
+                  "widget": {
+                    "title": "Widget",
+                    "type": "string",
+                    "description": "Optional direct LaMetric widget id for Temporary App actions."
+                  },
+                  "restoreAppId": {
+                    "title": "Restore App ID",
+                    "type": "string",
+                    "description": "App id/name/package to return to after the action.",
+                    "placeholder": "clock"
+                  },
+                  "durationMs": {
+                    "title": "Duration (ms)",
+                    "type": "integer",
+                    "default": 5000,
+                    "minimum": 0
+                  },
+                  "minBrightness": {
+                    "title": "Minimum Brightness",
+                    "type": "integer",
+                    "default": 2,
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "maxBrightness": {
+                    "title": "Maximum Brightness",
+                    "type": "integer",
+                    "default": 25,
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "step": {
+                    "title": "Brightness Step",
+                    "type": "integer",
+                    "default": 5,
+                    "minimum": 1,
+                    "maximum": 100
+                  },
+                  "stepIntervalMs": {
+                    "title": "Step Interval (ms)",
+                    "type": "integer",
+                    "default": 200,
+                    "minimum": 50
                   }
                 }
               }
