@@ -1,5 +1,5 @@
 import { Service, PlatformAccessory, CharacteristicValue } from 'homebridge';
-import { LaMetricPlatform } from './platform';
+import { LaMetricPlatform } from './platform.js';
 import fetch from 'node-fetch';
 import https from 'https';
 
@@ -371,34 +371,23 @@ export class LaMetricAccessory {
               if (clock) {
                 await this.activateWidget(clock);
               }
-              let current = 2;
-              const brighten = setInterval(async () => {
-                if (current < WAKE_MAX_BRIGHTNESS) {
-                  current += WAKE_STEP;
-                  await this.setBrightness(current);
-                } else {
-                  clearInterval(brighten);
-                }
-              }, STEP_INTERVAL);
+              const brighten = this.startBrightnessRamp(2, WAKE_MAX_BRIGHTNESS, WAKE_STEP, STEP_INTERVAL);
 
-              this.wakeTimer = setTimeout(async () => {
-                clearInterval(brighten);
-                // dim back down smoothly to 2
-                let down = WAKE_MAX_BRIGHTNESS;
-                while (down > 2) {
-                  down -= WAKE_STEP;
-                  await this.setBrightness(down);
-                  await new Promise(res => setTimeout(res, STEP_INTERVAL));
-                }
-                await this.setBrightness(2);
-                if (this.lastAppBeforeWake) {
-                  try {
+              this.wakeTimer = setTimeout(() => {
+                void (async () => {
+                  clearInterval(brighten);
+                  await this.dimBrightness(WAKE_MAX_BRIGHTNESS, 2, WAKE_STEP, STEP_INTERVAL);
+                  await this.setBrightness(2);
+                  if (this.lastAppBeforeWake) {
                     await this.activateWidget(this.lastAppBeforeWake);
                     await new Promise(r => setTimeout(r, 1200));
                     await this.setBrightness(100);
-                  } catch {}
-                }
-                this.wakeTimer = undefined;
+                  }
+                })().catch((e) => {
+                  this.platform.log.error('Wake Display restore failed', e as any);
+                }).finally(() => {
+                  this.wakeTimer = undefined;
+                });
               }, WAKE_DURATION);
 
               wakeSwitch.updateCharacteristic(OnChar, false);
@@ -479,7 +468,7 @@ export class LaMetricAccessory {
 
     // Input sources
     const tvService = this.service;
-    (async () => {
+    void (async () => {
       const InputSource = Service.InputSource;
 
       // hash helper for stable IDs
@@ -560,7 +549,9 @@ export class LaMetricAccessory {
             this.platform.log.info(`Switched to app: ${app.name ?? app.package}`);
           }
         });
-    })();
+    })().catch((e) => {
+      this.platform.log.error('Failed to initialize LaMetric input sources', e as any);
+    });
 
     // Periodic status refresh: only for TV power state (no brightness here)
     setInterval(async () => {
@@ -674,14 +665,94 @@ export class LaMetricAccessory {
       return;
     }
 
-    const timer = setTimeout(async () => {
-      this.actionTimers.delete(subtype);
+    this.scheduleTemporaryRestore(subtype, action, durationMs);
+  }
+
+  private startBrightnessRamp(current: number, target: number, step: number, stepIntervalMs: number) {
+    const timer = setInterval(() => {
+      void (async () => {
+        if (current < target) {
+          current = Math.min(target, current + step);
+          await this.setBrightness(current);
+        } else {
+          clearInterval(timer);
+        }
+      })().catch((e) => {
+        clearInterval(timer);
+        this.platform.log.error('Brightness ramp failed', e as any);
+      });
+    }, stepIntervalMs);
+
+    return timer;
+  }
+
+  private async dimBrightness(from: number, to: number, step: number, stepIntervalMs: number) {
+    let current = from;
+    while (current > to) {
+      current = Math.max(to, current - step);
+      await this.setBrightness(current);
+      await new Promise(res => setTimeout(res, stepIntervalMs));
+    }
+  }
+
+  private scheduleActionTimer(subtype: string, durationMs: number, callback: () => Promise<void>, failureMessage: string) {
+    const timer = setTimeout(() => {
+      void callback().catch((e) => {
+        this.platform.log.error(failureMessage, e as any);
+      }).finally(() => {
+        this.actionTimers.delete(subtype);
+      });
+    }, durationMs);
+    this.actionTimers.set(subtype, timer);
+    return timer;
+  }
+
+  private async restoreAfterWake(
+    subtype: string,
+    brighten: NodeJS.Timeout,
+    previousApp: { package: string; widget: string; name?: string } | null,
+    maxBrightness: number,
+    minBrightness: number,
+    step: number,
+    stepIntervalMs: number,
+  ) {
+    clearInterval(brighten);
+    await this.dimBrightness(maxBrightness, minBrightness, step, stepIntervalMs);
+    if (previousApp) {
+      await this.activateWidget(previousApp);
+    }
+    this.actionTimers.delete(subtype);
+  }
+
+  private scheduleWakeRestore(
+    subtype: string,
+    durationMs: number,
+    brighten: NodeJS.Timeout,
+    previousApp: { package: string; widget: string; name?: string } | null,
+    maxBrightness: number,
+    minBrightness: number,
+    step: number,
+    stepIntervalMs: number,
+  ) {
+    const timer = setTimeout(() => {
+      void this.restoreAfterWake(subtype, brighten, previousApp, maxBrightness, minBrightness, step, stepIntervalMs)
+        .catch((e) => {
+          clearInterval(brighten);
+          this.actionTimers.delete(subtype);
+          this.platform.log.error('Wake display restore failed', e as any);
+        });
+    }, durationMs);
+    this.actionTimers.set(subtype, timer);
+    return timer;
+  }
+
+  private scheduleTemporaryRestore(subtype: string, action: { restoreAppId?: string }, durationMs: number) {
+    this.scheduleActionTimer(subtype, durationMs, async () => {
       const restore = action.restoreAppId ? await this.findAppAny(action.restoreAppId) : await this.findAppAny('clock');
       if (restore) {
         await this.activateWidget(restore);
       }
-    }, durationMs);
-    this.actionTimers.set(subtype, timer);
+    }, 'Failed to restore app after temporary action');
   }
 
   private async runWakeDisplayAction(action: {
@@ -707,30 +778,9 @@ export class LaMetricAccessory {
       await this.activateWidget(restoreStart);
     }
 
-    let current = minBrightness;
-    const brighten = setInterval(async () => {
-      if (current < maxBrightness) {
-        current = Math.min(maxBrightness, current + step);
-        await this.setBrightness(current);
-      } else {
-        clearInterval(brighten);
-      }
-    }, stepIntervalMs);
+    const brighten = this.startBrightnessRamp(minBrightness, maxBrightness, step, stepIntervalMs);
 
-    const timer = setTimeout(async () => {
-      this.actionTimers.delete(subtype);
-      clearInterval(brighten);
-      let down = maxBrightness;
-      while (down > minBrightness) {
-        down = Math.max(minBrightness, down - step);
-        await this.setBrightness(down);
-        await new Promise(res => setTimeout(res, stepIntervalMs));
-      }
-      if (previousApp) {
-        await this.activateWidget(previousApp);
-      }
-    }, durationMs);
-    this.actionTimers.set(subtype, timer);
+    this.scheduleWakeRestore(subtype, durationMs, brighten, previousApp, maxBrightness, minBrightness, step, stepIntervalMs);
   }
 
   private async request(method: 'GET' | 'PUT', path: string, body?: any) {

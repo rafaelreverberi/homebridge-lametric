@@ -4,6 +4,8 @@ Homebridge platform plugin for integrating LaMetric Time devices into Apple Home
 
 This plugin exposes a LaMetric Time as native HomeKit controls for display power, app selection, brightness, volume, mute, and optional configurable actions. It uses the LaMetric local API and does not require any cloud service for normal HomeKit control.
 
+The plugin does not include analytics, telemetry, or user tracking.
+
 ## Features
 
 - Exposes each LaMetric Time as one HomeKit accessory with multiple services.
@@ -19,7 +21,7 @@ This plugin exposes a LaMetric Time as native HomeKit controls for display power
 ## Requirements
 
 - Homebridge 1.8.0 or newer
-- Node.js 18, 20, or 22
+- Node.js 22 or 24
 - A LaMetric Time reachable on the local network
 - A LaMetric developer API key for the device
 - The [BlackScreen LaMetric app](https://apps.lametric.com/apps/blackscreen/15495?apps_for=time) if you want HomeKit off/on to blank the display
@@ -219,18 +221,28 @@ Run linting:
 npm run lint
 ```
 
-During development, link the plugin into your local Homebridge installation:
+Start a local Homebridge instance with the Homebridge UI and the local plugin build:
+
+```sh
+npm run debug:homebridge
+```
+
+The local UI opens at `http://localhost:8581`. The test storage lives in `.local-homebridge-test/` and is ignored by git.
+
+To install a local package into another Homebridge installation:
+
+```sh
+npm pack
+npm install -g ./homebridge-lametric-1.1.1.tgz
+```
+
+If Homebridge runs on the same machine and you prefer npm linking:
 
 ```sh
 npm link
 ```
 
-If Homebridge runs on the same machine, restart Homebridge after linking. If it runs elsewhere, install the local build from the project folder:
-
-```sh
-npm pack
-npm install -g ./homebridge-lametric-1.1.0.tgz
-```
+Restart Homebridge after linking or installing a local package.
 
 ## Release Checklist
 
@@ -253,12 +265,14 @@ Push to GitHub:
 
 ```sh
 git status
-git add README.md config.schema.json package.json package-lock.json src/platform.ts src/platformAccessory.ts
-git commit -m "Release v1.1.0"
+git add README.md config.schema.json package.json package-lock.json src/platform.ts src/platformAccessory.ts scripts/local-homebridge-ui.sh .gitignore
+git commit -m "Release v1.1.1"
 git push origin main
-git tag v1.1.0
-git push origin v1.1.0
+git tag v1.1.1
+git push origin v1.1.1
 ```
+
+Then create a GitHub release for the same version tag with release notes.
 
 After publishing, users can update with:
 

@@ -124,6 +124,7 @@ web_modules/
 
 # Homebridge local test config
 /test/hbConfig
+.local-homebridge-test/
 
 # Local editor and OS files
 .vscode/
