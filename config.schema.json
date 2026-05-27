@@ -4,11 +4,13 @@
   "singular": true,
   "schema": {
     "type": "object",
+    "required": [
+      "name"
+    ],
     "properties": {
       "name": {
         "title": "Name",
         "type": "string",
-        "required": true,
         "default": "LaMetric"
       },
       "ip": {
@@ -34,6 +36,10 @@
         "description": "Optional app/widget definitions for a single LaMetric device.",
         "items": {
           "type": "object",
+          "required": [
+            "package",
+            "widget"
+          ],
           "properties": {
             "id": {
               "title": "ID",
@@ -48,13 +54,11 @@
             "package": {
               "title": "Package",
               "type": "string",
-              "required": true,
               "placeholder": "com.lametric.clock"
             },
             "widget": {
               "title": "Widget",
-              "type": "string",
-              "required": true
+              "type": "string"
             }
           }
         }
@@ -88,6 +92,9 @@
         ],
         "items": {
           "type": "object",
+          "required": [
+            "type"
+          ],
           "properties": {
             "enabled": {
               "title": "Enabled",
@@ -107,7 +114,6 @@
             "type": {
               "title": "Type",
               "type": "string",
-              "required": true,
               "default": "temporaryApp",
               "oneOf": [
                 {
@@ -188,6 +194,11 @@
         "description": "Configure multiple LaMetric devices. When this is set, top-level ip/apiKey are ignored.",
         "items": {
           "type": "object",
+          "required": [
+            "name",
+            "ip",
+            "apiKey"
+          ],
           "properties": {
             "id": {
               "title": "Stable ID",
@@ -197,13 +208,11 @@
             "name": {
               "title": "Name",
               "type": "string",
-              "required": true,
               "default": "LaMetric"
             },
             "ip": {
               "title": "IP Address",
               "type": "string",
-              "required": true,
               "placeholder": "192.168.1.52"
             },
             "port": {
@@ -214,14 +223,17 @@
             },
             "apiKey": {
               "title": "API Key",
-              "type": "string",
-              "required": true
+              "type": "string"
             },
             "apps": {
               "title": "Apps",
               "type": "array",
               "items": {
                 "type": "object",
+                "required": [
+                  "package",
+                  "widget"
+                ],
                 "properties": {
                   "id": {
                     "title": "ID",
@@ -236,13 +248,11 @@
                   "package": {
                     "title": "Package",
                     "type": "string",
-                    "required": true,
                     "placeholder": "com.lametric.clock"
                   },
                   "widget": {
                     "title": "Widget",
-                    "type": "string",
-                    "required": true
+                    "type": "string"
                   }
                 }
               }
@@ -276,6 +286,9 @@
               ],
               "items": {
                 "type": "object",
+                "required": [
+                  "type"
+                ],
                 "properties": {
                   "enabled": {
                     "title": "Enabled",
@@ -295,7 +308,6 @@
                   "type": {
                     "title": "Type",
                     "type": "string",
-                    "required": true,
                     "default": "temporaryApp",
                     "oneOf": [
                       {
