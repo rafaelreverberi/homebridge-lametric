@@ -12,6 +12,7 @@ export class LaMetricAccessory {
   private wakeTimer?: NodeJS.Timeout;
   private lastAppBeforeWake: { package: string; widget: string; name?: string } | null = null;
   private actionTimers = new Map<string, NodeJS.Timeout>();
+  private radioPlaying = false;
 
   private get device() {
     const ctx = (this.accessory.context as any)?.device ?? {};
@@ -425,6 +426,9 @@ export class LaMetricAccessory {
       .onGet(this.getBrightness.bind(this))
       .onSet(this.setBrightness.bind(this));
 
+    this.service.getCharacteristic(Characteristic.RemoteKey)
+      .onSet(this.handleRemoteKey.bind(this));
+
     // Display brightness remains a Lightbulb service, but now on the same accessory.
     this.brightnessService = this.accessory.getService(Service.Lightbulb)
       || this.accessory.addService(Service.Lightbulb, 'Display Brightness', 'lametric-display-brightness');
@@ -783,7 +787,108 @@ export class LaMetricAccessory {
     this.scheduleWakeRestore(subtype, durationMs, brighten, previousApp, maxBrightness, minBrightness, step, stepIntervalMs);
   }
 
-  private async request(method: 'GET' | 'PUT', path: string, body?: any) {
+  private async handleRemoteKey(value: CharacteristicValue) {
+    const Characteristic = this.platform.api.hap.Characteristic;
+    const key = Number(value);
+
+    try {
+      switch (key) {
+      case Characteristic.RemoteKey.ARROW_LEFT:
+        await this.previousApp();
+        break;
+      case Characteristic.RemoteKey.ARROW_RIGHT:
+        await this.nextApp();
+        break;
+      case Characteristic.RemoteKey.ARROW_UP:
+        await this.stepBrightness(5);
+        break;
+      case Characteristic.RemoteKey.ARROW_DOWN:
+        await this.stepBrightness(-5);
+        break;
+      case Characteristic.RemoteKey.SELECT:
+        await this.selectForegroundApp();
+        break;
+      case Characteristic.RemoteKey.PLAY_PAUSE:
+        await this.toggleRadio();
+        break;
+      case Characteristic.RemoteKey.NEXT_TRACK:
+        await this.radioAction('radio.next');
+        break;
+      case Characteristic.RemoteKey.PREVIOUS_TRACK:
+        await this.radioAction('radio.prev');
+        break;
+      case Characteristic.RemoteKey.BACK:
+      case Characteristic.RemoteKey.EXIT:
+        await this.activateClock();
+        break;
+      default:
+        this.platform.log.info(`Remote key ${key} has no LaMetric mapping`);
+        break;
+      }
+    } catch (e) {
+      this.platform.log.error(`Failed to handle remote key ${key}`, e as any);
+      throw e;
+    }
+  }
+
+  private async nextApp() {
+    await this.request('PUT', '/api/v2/device/apps/next');
+    this.platform.log.info('Remote key → next app');
+  }
+
+  private async previousApp() {
+    await this.request('PUT', '/api/v2/device/apps/prev');
+    this.platform.log.info('Remote key → previous app');
+  }
+
+  private async stepBrightness(delta: number) {
+    const current = Number(await this.getBrightness());
+    const next = Math.max(2, Math.min(100, current + delta));
+    await this.setBrightness(next);
+    this.platform.log.info(`Remote key → brightness ${next}`);
+  }
+
+  private async selectForegroundApp() {
+    const fg = await this.getForegroundApp();
+    if (fg?.package && fg.widget) {
+      await this.activateWidget({ package: fg.package, widget: fg.widget });
+      this.platform.log.info('Remote key → selected foreground app');
+      return;
+    }
+
+    await this.activateClock();
+  }
+
+  private async activateClock() {
+    const clock = await this.findFirstApp(['clock', 'com.lametric.clock']);
+    if (clock) {
+      await this.activateWidget(clock);
+      this.platform.log.info('Remote key → clock app');
+    }
+  }
+
+  private async toggleRadio() {
+    const action = this.radioPlaying ? 'radio.stop' : 'radio.play';
+    await this.radioAction(action);
+    this.radioPlaying = !this.radioPlaying;
+  }
+
+  private async radioAction(actionId: 'radio.play' | 'radio.stop' | 'radio.next' | 'radio.prev') {
+    const radio = await this.findFirstApp(['radio', 'com.lametric.radio']);
+    if (!radio) {
+      throw new Error('Radio app not found on LaMetric device');
+    }
+
+    await this.request('POST', `/api/v2/device/apps/${radio.package}/widgets/${radio.widget}/actions`, { id: actionId });
+    if (actionId === 'radio.play') {
+      this.radioPlaying = true;
+    } else if (actionId === 'radio.stop') {
+      this.radioPlaying = false;
+    }
+    this.platform.log.info(`Remote key → ${actionId}`);
+  }
+
+  private async request(method: 'GET' | 'PUT' | 'POST', path: string, body?: any) {
     const { ip, port } = this.device;
     const url = `https://${ip}:${port}${path}`;
     const payload = body ? JSON.stringify(body) : undefined;
