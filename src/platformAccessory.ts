@@ -870,7 +870,6 @@ export class LaMetricAccessory {
   private async toggleRadio() {
     const action = this.radioPlaying ? 'radio.stop' : 'radio.play';
     await this.radioAction(action);
-    this.radioPlaying = !this.radioPlaying;
   }
 
   private async radioAction(actionId: 'radio.play' | 'radio.stop' | 'radio.next' | 'radio.prev') {
