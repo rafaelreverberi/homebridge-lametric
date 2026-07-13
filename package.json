@@ -7,6 +7,10 @@
   "description": "Homebridge plugin for controlling LaMetric Time devices from Apple HomeKit.",
   "author": "Rafael Reverberi",
   "license": "Apache-2.0",
+  "funding": {
+    "type": "individual",
+    "url": "https://ud.me/rafaelreverberi.x"
+  },
   "homepage": "https://github.com/rafaelreverberi/homebridge-lametric#readme",
   "repository": {
     "type": "git",

@@ -1,5 +1,7 @@
 # Homebridge LaMetric
 
+[![verified-by-homebridge](https://img.shields.io/badge/homebridge-verified-blueviolet?color=%23491F59&style=for-the-badge&logoColor=%23FFFFFF&logo=homebridge)](https://github.com/homebridge/homebridge/wiki/Verified-Plugins) [![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4%EF%B8%8F-ff69b4?style=for-the-badge)](https://ud.me/rafaelreverberi.x)
+
 Homebridge platform plugin for integrating LaMetric Time devices into Apple HomeKit.
 
 This plugin exposes a LaMetric Time as native HomeKit controls for display power, app selection, brightness, volume, mute, and optional configurable actions. It uses the LaMetric local API and does not require any cloud service for normal HomeKit control.
