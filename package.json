@@ -10,8 +10,8 @@
   "homepage": "https://github.com/rafaelreverberi/homebridge-lametric#readme",
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/rafaelreverberi/homebridge-lametric.git"
-  },
+    "url": "https://github.com/rafaelreverberi/homebridge-lametric.git"
+  }
   "bugs": {
     "url": "https://github.com/rafaelreverberi/homebridge-lametric/issues"
   },
