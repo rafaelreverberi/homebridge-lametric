@@ -2,7 +2,7 @@
   "name": "homebridge-lametric",
   "displayName": "Homebridge LaMetric",
   "type": "module",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "private": false,
   "description": "Homebridge plugin for controlling LaMetric Time devices from Apple HomeKit.",
   "author": "Rafael Reverberi",
@@ -14,7 +14,7 @@
   "homepage": "https://github.com/rafaelreverberi/homebridge-lametric#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/rafaelreverberi/homebridge-lametric.git"
+    "url": "git+https://github.com/rafaelreverberi/homebridge-lametric.git"
   },
   "bugs": {
     "url": "https://github.com/rafaelreverberi/homebridge-lametric/issues"
@@ -30,6 +30,7 @@
   "files": [
     "dist",
     "config.schema.json",
+    "CHANGELOG.md",
     "README.md",
     "LICENSE"
   ],
@@ -41,7 +42,8 @@
     "build": "rimraf ./dist && tsc",
     "debug:homebridge": "bash scripts/local-homebridge-ui.sh",
     "lint": "eslint . --max-warnings=0",
-    "prepublishOnly": "npm run lint && npm run build",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "prepublishOnly": "npm run lint && npm test",
     "watch": "npm run build && npm link && nodemon"
   },
   "dependencies": {

@@ -2,6 +2,11 @@ import { Service, PlatformAccessory, CharacteristicValue } from 'homebridge';
 import { LaMetricPlatform } from './platform.js';
 import fetch from 'node-fetch';
 import https from 'https';
+import {
+  DeviceCommunicationError,
+  ReachabilityLogGate,
+  throwUnlessDeviceCommunicationError,
+} from './reachability.js';
 
 export class LaMetricAccessory {
   private service: Service;
@@ -13,6 +18,8 @@ export class LaMetricAccessory {
   private lastAppBeforeWake: { package: string; widget: string; name?: string } | null = null;
   private actionTimers = new Map<string, NodeJS.Timeout>();
   private radioPlaying = false;
+  private readonly reachability: ReachabilityLogGate;
+  private readonly loggedFailures = new WeakSet<object>();
 
   private get device() {
     const ctx = (this.accessory.context as any)?.device ?? {};
@@ -68,7 +75,7 @@ export class LaMetricAccessory {
         return appsList;
       }
     } catch (e) {
-      this.platform.log.warn('Failed to fetch apps from device', e as any);
+      this.logFailure('Failed to fetch apps from device', e);
     }
     return [];
   }
@@ -116,7 +123,7 @@ export class LaMetricAccessory {
 
   private async activateWidget(app: { package: string; widget: string }) {
     const path = `/api/v2/device/apps/${app.package}/widgets/${app.widget}/activate`;
-    this.platform.log.info(`Activating widget: ${app.package} widget=${app.widget}`);
+    this.platform.log.debug(`Activating widget: ${app.package} widget=${app.widget}`);
     return await this.request('PUT', path);
   }
 
@@ -128,14 +135,14 @@ export class LaMetricAccessory {
         if (app && app.widgets) {
           for (const [wid, w] of Object.entries<any>(app.widgets)) {
             if (w && w.visible === true) {
-              this.platform.log.info(`Foreground app detected: ${app.title ?? pkg} (${pkg}) widget=${wid}`);
+              this.platform.log.debug(`Foreground app detected: ${app.title ?? pkg} (${pkg}) widget=${wid}`);
               return { title: app.title, package: pkg, widget: wid };
             }
           }
         }
       }
     } catch (e) {
-      this.platform.log.warn('Failed to parse foreground app', e as any);
+      this.logFailure('Failed to parse foreground app', e);
     }
     return null;
   }
@@ -152,15 +159,15 @@ export class LaMetricAccessory {
       const fg = await this.getForegroundApp();
       if (fg?.package) {
         if (blackout && fg.package === blackout.package) {
-          this.platform.log.info('computeActive → blackout foreground → INACTIVE');
+          this.platform.log.debug('computeActive → blackout foreground → INACTIVE');
           return 0;
         }
         // any non-blackout in foreground counts as active (including clock)
-        this.platform.log.info('computeActive → non-blackout foreground → ACTIVE');
+        this.platform.log.debug('computeActive → non-blackout foreground → ACTIVE');
         return 1;
       }
     } catch (e) {
-      this.platform.log.warn('computeActive (apps) failed, returning ACTIVE fallback', e as any);
+      this.logFailure('computeActive (apps) failed, returning ACTIVE fallback', e);
       return 1; // avoid spinner in Home app when the device is unreachable
     }
 
@@ -174,10 +181,10 @@ export class LaMetricAccessory {
       const enabled = display.enabled !== false;
       const b = typeof display.brightness === 'number' ? display.brightness : 0;
       const val: 0 | 1 = (enabled && b >= 2) ? 1 : 0;
-      this.platform.log.info(`computeActive (fallback display) → ${val ? 'ACTIVE' : 'INACTIVE'} (brightness=${b})`);
+      this.platform.log.debug(`computeActive (fallback display) → ${val ? 'ACTIVE' : 'INACTIVE'} (brightness=${b})`);
       return val;
     } catch (e) {
-      this.platform.log.warn('computeActive fallback failed', e as any);
+      this.logFailure('computeActive fallback failed', e);
       return 1; // avoid spinner in Home app
     }
   }
@@ -186,6 +193,10 @@ export class LaMetricAccessory {
     private readonly platform: LaMetricPlatform,
     private readonly accessory: PlatformAccessory,
   ) {
+    this.reachability = new ReachabilityLogGate(
+      this.platform.log,
+      `${this.device.ip}:${this.device.port}`,
+    );
     const Service = this.platform.api.hap.Service;
     const Characteristic = this.platform.api.hap.Characteristic;
     const role: string = (this.accessory.context as any)?.role ?? 'tv';
@@ -233,7 +244,7 @@ export class LaMetricAccessory {
             }
           }
         } catch (e) {
-          this.platform.log.warn('Light status refresh failed', e as any);
+          this.logFailure('Light status refresh failed', e);
         }
       }, 15000);
 
@@ -268,7 +279,7 @@ export class LaMetricAccessory {
           try {
             await this.request('PUT', '/api/v2/device/audio', { volume: v ? 0 : 50 });
           } catch (e) {
-            this.platform.log.error('Failed to set mute', e);
+            this.logFailure('Failed to set mute', e, 'error');
           }
         });
 
@@ -335,7 +346,7 @@ export class LaMetricAccessory {
               cryptoSwitch.updateCharacteristic(OnChar, false);
             }
           } catch (e) {
-            this.platform.log.error('Show Crypto switch failed', e as any);
+            this.logFailure('Show Crypto switch failed', e, 'error');
             cryptoSwitch.updateCharacteristic(OnChar, false);
           }
         });
@@ -385,7 +396,7 @@ export class LaMetricAccessory {
                     await this.setBrightness(100);
                   }
                 })().catch((e) => {
-                  this.platform.log.error('Wake Display restore failed', e as any);
+                  this.logFailure('Wake Display restore failed', e, 'error');
                 }).finally(() => {
                   this.wakeTimer = undefined;
                 });
@@ -401,7 +412,7 @@ export class LaMetricAccessory {
               wakeSwitch.updateCharacteristic(OnChar, false);
             }
           } catch (e) {
-            this.platform.log.error('Wake Display switch failed', e as any);
+            this.logFailure('Wake Display switch failed', e, 'error');
             wakeSwitch.updateCharacteristic(OnChar, false);
           }
         });
@@ -464,7 +475,7 @@ export class LaMetricAccessory {
         try {
           await this.request('PUT', '/api/v2/device/audio', { volume: v ? 0 : 50 });
         } catch (e) {
-          this.platform.log.error('Failed to set mute', e);
+          this.logFailure('Failed to set mute', e, 'error');
         }
       });
 
@@ -493,7 +504,7 @@ export class LaMetricAccessory {
         byKey.set(key, { id: app.id, name: app.name, package: app.package, widget: app.widget });
       }
       const appsList = Array.from(byKey.values());
-      this.platform.log.info(`InputSources: using ${appsList.length} apps (config=${fromConfig.length}, device=${fromDevice.length})`);
+      this.platform.log.debug(`InputSources: using ${appsList.length} apps (config=${fromConfig.length}, device=${fromDevice.length})`);
 
       // cleanup old inputs not in desired set
       const desiredKeys = new Set(appsList.map(a => `${a.package}-${a.widget}`));
@@ -549,12 +560,17 @@ export class LaMetricAccessory {
             if (current !== Active.ACTIVE) {
               tvService.updateCharacteristic(Active, Active.ACTIVE);
             }
-            await this.activateWidget(app);
-            this.platform.log.info(`Switched to app: ${app.name ?? app.package}`);
+            try {
+              await this.activateWidget(app);
+              this.platform.log.debug(`Switched to app: ${app.name ?? app.package}`);
+            } catch (e) {
+              this.logFailure('Failed to switch app', e, 'error');
+              throwUnlessDeviceCommunicationError(e);
+            }
           }
         });
     })().catch((e) => {
-      this.platform.log.error('Failed to initialize LaMetric input sources', e as any);
+      this.logFailure('Failed to initialize LaMetric input sources', e, 'error');
     });
 
     // Periodic status refresh: only for TV power state (no brightness here)
@@ -566,7 +582,7 @@ export class LaMetricAccessory {
           this.brightnessService.updateCharacteristic(Characteristic.On, active === 1);
         }
       } catch (e) {
-        this.platform.log.warn('TV status refresh failed', e as any);
+        this.logFailure('TV status refresh failed', e);
       }
     }, 15000);
   }
@@ -603,7 +619,7 @@ export class LaMetricAccessory {
           try {
             await this.runAction(action, subtype);
           } catch (e) {
-            this.platform.log.error(`Action ${name} failed`, e as any);
+            this.logFailure(`Action ${name} failed`, e, 'error');
           } finally {
             actionSwitch.updateCharacteristic(Characteristic.On, false);
           }
@@ -683,7 +699,7 @@ export class LaMetricAccessory {
         }
       })().catch((e) => {
         clearInterval(timer);
-        this.platform.log.error('Brightness ramp failed', e as any);
+        this.logFailure('Brightness ramp failed', e, 'error');
       });
     }, stepIntervalMs);
 
@@ -702,7 +718,7 @@ export class LaMetricAccessory {
   private scheduleActionTimer(subtype: string, durationMs: number, callback: () => Promise<void>, failureMessage: string) {
     const timer = setTimeout(() => {
       void callback().catch((e) => {
-        this.platform.log.error(failureMessage, e as any);
+        this.logFailure(failureMessage, e, 'error');
       }).finally(() => {
         this.actionTimers.delete(subtype);
       });
@@ -743,7 +759,7 @@ export class LaMetricAccessory {
         .catch((e) => {
           clearInterval(brighten);
           this.actionTimers.delete(subtype);
-          this.platform.log.error('Wake display restore failed', e as any);
+          this.logFailure('Wake display restore failed', e, 'error');
         });
     }, durationMs);
     this.actionTimers.set(subtype, timer);
@@ -822,37 +838,37 @@ export class LaMetricAccessory {
         await this.activateClock();
         break;
       default:
-        this.platform.log.info(`Remote key ${key} has no LaMetric mapping`);
+        this.platform.log.debug(`Remote key ${key} has no LaMetric mapping`);
         break;
       }
     } catch (e) {
-      this.platform.log.error(`Failed to handle remote key ${key}`, e as any);
-      throw e;
+      this.logFailure(`Failed to handle remote key ${key}`, e, 'error');
+      throwUnlessDeviceCommunicationError(e);
     }
   }
 
   private async nextApp() {
     await this.request('PUT', '/api/v2/device/apps/next');
-    this.platform.log.info('Remote key → next app');
+    this.platform.log.debug('Remote key → next app');
   }
 
   private async previousApp() {
     await this.request('PUT', '/api/v2/device/apps/prev');
-    this.platform.log.info('Remote key → previous app');
+    this.platform.log.debug('Remote key → previous app');
   }
 
   private async stepBrightness(delta: number) {
     const current = Number(await this.getBrightness());
     const next = Math.max(2, Math.min(100, current + delta));
     await this.setBrightness(next);
-    this.platform.log.info(`Remote key → brightness ${next}`);
+    this.platform.log.debug(`Remote key → brightness ${next}`);
   }
 
   private async selectForegroundApp() {
     const fg = await this.getForegroundApp();
     if (fg?.package && fg.widget) {
       await this.activateWidget({ package: fg.package, widget: fg.widget });
-      this.platform.log.info('Remote key → selected foreground app');
+      this.platform.log.debug('Remote key → selected foreground app');
       return;
     }
 
@@ -863,7 +879,7 @@ export class LaMetricAccessory {
     const clock = await this.findFirstApp(['clock', 'com.lametric.clock']);
     if (clock) {
       await this.activateWidget(clock);
-      this.platform.log.info('Remote key → clock app');
+      this.platform.log.debug('Remote key → clock app');
     }
   }
 
@@ -884,17 +900,42 @@ export class LaMetricAccessory {
     } else if (actionId === 'radio.stop') {
       this.radioPlaying = false;
     }
-    this.platform.log.info(`Remote key → ${actionId}`);
+    this.platform.log.debug(`Remote key → ${actionId}`);
+  }
+
+  private logFailure(message: string, error: unknown, level: 'warn' | 'error' = 'warn'): void {
+    if (error instanceof DeviceCommunicationError) {
+      this.platform.log.debug(`${message}: ${error.message}`);
+      return;
+    }
+
+    if (error !== null && (typeof error === 'object' || typeof error === 'function')) {
+      if (this.loggedFailures.has(error)) {
+        this.platform.log.debug(`${message}: failure was already logged`);
+        return;
+      }
+      this.loggedFailures.add(error);
+    }
+
+    if (level === 'error') {
+      this.platform.log.error(message, error as any);
+    } else {
+      this.platform.log.warn(message, error as any);
+    }
   }
 
   private async request(method: 'GET' | 'PUT' | 'POST', path: string, body?: any) {
+    if (!this.reachability.beginAttempt()) {
+      throw new DeviceCommunicationError('connection retry paused while device is unavailable');
+    }
+
     const { ip, port } = this.device;
     const url = `https://${ip}:${port}${path}`;
     const payload = body ? JSON.stringify(body) : undefined;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 2500);
 
-    this.platform.log.info(`[HTTP ${method}] ${url} ${payload ? 'body=' + payload : ''}`);
+    this.platform.log.debug(`[HTTP ${method}] ${url} ${payload ? 'body=' + payload : ''}`);
 
     try {
       const res = await fetch(url, {
@@ -910,13 +951,25 @@ export class LaMetricAccessory {
       });
 
       const text = await res.text();
-      this.platform.log.info(`[HTTP ${method}] ${res.status} ${res.statusText} response=${text}`);
+      this.platform.log.debug(`[HTTP ${method}] ${res.status} ${res.statusText} response=${text}`);
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status} ${res.statusText}`);
+      }
+
+      this.reachability.reportSuccess();
 
       try {
         return JSON.parse(text);
       } catch {
         return text;
       }
+    } catch (error) {
+      if (error instanceof DeviceCommunicationError) {
+        throw error;
+      }
+      const detail = this.reachability.reportFailure(error);
+      throw new DeviceCommunicationError(detail, { cause: error });
     } finally {
       clearTimeout(timeout);
     }
@@ -926,10 +979,10 @@ export class LaMetricAccessory {
     try {
       const info = await this.getDeviceInfo();
       const v = typeof info?.audio?.volume === 'number' ? info.audio.volume : 50;
-      this.platform.log.info(`getVolume → ${v}`);
+      this.platform.log.debug(`getVolume → ${v}`);
       return v;
     } catch (e) {
-      this.platform.log.error('Failed to get volume', e);
+      this.logFailure('Failed to get volume', e, 'error');
       return 50;
     }
   }
@@ -937,10 +990,10 @@ export class LaMetricAccessory {
   async setVolume(value: CharacteristicValue) {
     try {
       await this.request('PUT', '/api/v2/device/audio', { volume: value });
-      this.platform.log.info(`Volume set to ${value}`);
+      this.platform.log.debug(`Volume set to ${value}`);
     } catch (e) {
-      this.platform.log.error('Failed to set volume', e);
-      throw e;
+      this.logFailure('Failed to set volume', e, 'error');
+      throwUnlessDeviceCommunicationError(e);
     }
   }
 
@@ -960,14 +1013,14 @@ export class LaMetricAccessory {
     const safe = brightness === 0 ? 2 : brightness;
     try {
       await this.request('PUT', '/api/v2/device/display', { brightness_mode: 'manual', brightness: safe });
-      this.platform.log.info(`Brightness set (requested=${brightness}, sent=${safe})`);
+      this.platform.log.debug(`Brightness set (requested=${brightness}, sent=${safe})`);
       // Sync UI immediately on the Lightbulb service (if present)
       if (this.brightnessService) {
         this.brightnessService.updateCharacteristic(this.platform.api.hap.Characteristic.Brightness, safe);
       }
     } catch (e) {
-      this.platform.log.error('Failed to set brightness', e);
-      throw e;
+      this.logFailure('Failed to set brightness', e, 'error');
+      throwUnlessDeviceCommunicationError(e);
     }
   }
 
@@ -976,10 +1029,10 @@ export class LaMetricAccessory {
       const info = await this.getDeviceInfo();
       const b = typeof info?.display?.brightness === 'number' ? info.display.brightness : undefined;
       const val = typeof b === 'number' ? Math.max(2, b) : 100;
-      this.platform.log.info(`getBrightness → ${val} (raw=${b})`);
+      this.platform.log.debug(`getBrightness → ${val} (raw=${b})`);
       return val;
     } catch (e) {
-      this.platform.log.error('Failed to get brightness', e);
+      this.logFailure('Failed to get brightness', e, 'error');
       // Return a sane default to avoid spinner in Home app
       return 100;
     }
@@ -992,7 +1045,7 @@ export class LaMetricAccessory {
 
   async getActive(): Promise<CharacteristicValue> {
     const active = await this.computeActive();
-    this.platform.log.info(`getActive → ${active ? 'ACTIVE' : 'INACTIVE'}`);
+    this.platform.log.debug(`getActive → ${active ? 'ACTIVE' : 'INACTIVE'}`);
     return active;
   }
 
@@ -1010,10 +1063,10 @@ export class LaMetricAccessory {
       if (!on) {
         if (blackout) {
           await this.activateWidget(blackout);
-          this.platform.log.info('setActive(false) → blackout widget activated');
+          this.platform.log.debug('setActive(false) → blackout widget activated');
         } else {
           await this.request('PUT', '/api/v2/device/display', { brightness_mode: 'manual', brightness: 2 });
-          this.platform.log.info('setActive(false) → fallback brightness=2');
+          this.platform.log.debug('setActive(false) → fallback brightness=2');
         }
         if (this.brightnessService) {
           this.brightnessService.updateCharacteristic(this.platform.api.hap.Characteristic.Brightness, 2);
@@ -1022,10 +1075,10 @@ export class LaMetricAccessory {
       } else {
         if (clock) {
           await this.activateWidget(clock);
-          this.platform.log.info('setActive(true) → clock widget activated');
+          this.platform.log.debug('setActive(true) → clock widget activated');
         } else {
           await this.request('PUT', '/api/v2/device/display', { brightness_mode: 'manual', brightness: 100 });
-          this.platform.log.info('setActive(true) → fallback brightness=100');
+          this.platform.log.debug('setActive(true) → fallback brightness=100');
         }
         if (this.brightnessService) {
           this.brightnessService.updateCharacteristic(this.platform.api.hap.Characteristic.Brightness, 100);
@@ -1033,8 +1086,8 @@ export class LaMetricAccessory {
         }
       }
     } catch (e) {
-      this.platform.log.error('Failed to set active state', e);
-      throw e;
+      this.logFailure('Failed to set active state', e, 'error');
+      throwUnlessDeviceCommunicationError(e);
     }
   }
 }

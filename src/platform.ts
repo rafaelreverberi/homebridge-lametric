@@ -105,7 +105,7 @@ export class LaMetricPlatform implements DynamicPlatformPlugin {
 
     // 2) For each configured device, restore or create accessory
     for (const { device, stableId } of configuredDevices) {
-      this.log.info(`Config for ${device.name}: ip=${device.ip}, port=${device.port}, apps=${device.apps?.length ?? 0}`);
+      this.log.debug(`Config for ${device.name}: ip=${device.ip}, port=${device.port}, apps=${device.apps?.length ?? 0}`);
 
       // Helper to find cached accessory by uuid
       const findCached = (u: string) => this.accessories.find(a => a.UUID === u);
@@ -124,7 +124,7 @@ export class LaMetricPlatform implements DynamicPlatformPlugin {
       const cached = findCached(uuid);
 
       if (cached) {
-        this.log.info(`Restoring accessory: ${device.name} (${stableId})`);
+        this.log.debug(`Restoring accessory: ${device.name} (${stableId})`);
         cached.context.device = device;
         cached.context.role = 'device';
         try {
@@ -166,7 +166,7 @@ export class LaMetricPlatform implements DynamicPlatformPlugin {
       return;
     }
     const idInfo = ` (${dev.ip}${dev.port ? ':' + dev.port : ''})`;
-    this.log.info('Loading accessory from cache:', accessory.displayName + idInfo);
+    this.log.debug('Loading accessory from cache:', accessory.displayName + idInfo);
     this.accessories.push(accessory);
     try {
       if (!accessory.category) {
